@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.card {
+  @apply border border-base-content/10;
+}
+
+.menu :where(li ul):before {
+  @apply bg-primary-content opacity-100;
+}
