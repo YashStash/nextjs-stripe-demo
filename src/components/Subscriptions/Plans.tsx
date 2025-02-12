@@ -1,8 +1,9 @@
 "use client";
 
-import clsx from "clsx";
 import { useEffect, useState } from "react";
 import CheckoutModal from "./CheckoutModal";
+import AreYouSureDialog from "../AreYouSureDialog";
+import ProductPLans from "./ProductPlans";
 
 interface Price {
   id: string;
@@ -39,6 +40,7 @@ interface Subscription {
     | "past_due"
     | "trialing"
     | "unpaid";
+  cancelAtPeriodEnd: boolean;
   current_period_end: number;
   current_period_start: number;
   productId: string;
@@ -53,16 +55,24 @@ async function getSubscriptions(): Promise<{ data: Subscription[] }> {
   return fetch("/api/subscriptions").then((res) => res.json());
 }
 
-function getButtonName(price: Price, subscription?: Subscription) {
-  if (subscription && ["active", "trialing"].includes(subscription.status)) {
-    return "Cancel subscription";
-  }
+async function cancelSubscription(subscriptionId: string) {
+  return fetch(`/api/subscriptions/cancel`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ subscriptionId }),
+  }).then((res) => res.json());
+}
 
-  if (price.trial) {
-    return `Start ${price.trial.days}-Day Trial`;
-  }
-
-  return price.recurring ? "Subscribe" : "Purchase";
+async function resumeSubscription(subscriptionId: string) {
+  return fetch(`/api/subscriptions/resume`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ subscriptionId }),
+  }).then((res) => res.json());
 }
 
 export default function Plans() {
@@ -71,18 +81,34 @@ export default function Plans() {
   const [checkoutModalData, setCheckoutModalData] = useState<{
     product: Product;
     price: Price;
+    currentSubscriptionId?: string;
+    upgrade?: boolean;
   }>();
   const [recurringSettings, setRecurringSettings] = useState<
     Record<string, "monthly" | "yearly">
   >({});
+  const [areYouSureDialogData, setAreYouSureDialogData] =
+    useState<Subscription>();
 
   useEffect(() => {
     getPlans().then((result) => setPlans(result.data));
     getSubscriptions().then((result) => setSubscriptions(result.data));
   }, []);
 
-  const handleSubscribe = (product: Product, price: Price) => {
-    setCheckoutModalData({ product, price });
+  const handleSubscribe = (
+    product: Product,
+    price: Price,
+    currentSubscriptionId?: string,
+    upgrade?: boolean
+  ) => {
+    setCheckoutModalData({ product, price, currentSubscriptionId, upgrade });
+  };
+
+  const handleResumeSubscription = (subscriptionId: string) => {
+    resumeSubscription(subscriptionId).then(() => {
+      getPlans().then((result) => setPlans(result.data));
+      getSubscriptions().then((result) => setSubscriptions(result.data));
+    });
   };
 
   const handleToggleRecurring = (productId: string) => {
@@ -92,78 +118,23 @@ export default function Plans() {
     }));
   };
 
-  function getPrices(product: Product) {
-    return product.prices[recurringSettings[product.id] ?? "monthly"] ?? [];
-  }
-
   return (
     <>
       <ul className="flex flex-col gap-6 max-w-lg">
-        {plans?.map((product) => {
-          const activeSubscriptions =
-            subscriptions?.filter((sub) => sub.productId === product.id) ?? [];
-
-          return (
-            <li key={product.id}>
-              <div className="flex items-center">
-                <h2 className="text-xl mb-2 flex-1">{product.name}</h2>
-                <div>
-                  <label className="label cursor-pointer gap-2">
-                    <span className="label-text">Monthly</span>
-                    <input
-                      type="checkbox"
-                      className="toggle toggle-primary"
-                      onChange={() => handleToggleRecurring(product.id)}
-                      checked={recurringSettings[product.id] === "yearly"}
-                    />
-                    <span className="label-text">Yearly</span>
-                  </label>
-                </div>
-              </div>
-              <ul className="flex flex-col gap-4">
-                {[
-                  ...product.prices.oneTime,
-                  ...product.prices.free,
-                  ...getPrices(product),
-                ].map((price) => (
-                  <li key={price.id} className="card bg-base-100 shadow-xl">
-                    <div className="card-body">
-                      <h3 className="font-bold">{price.name}</h3>
-                      <p>
-                        ${price.unitAmount / 100}{" "}
-                        <span className="uppercase">{price.currency}</span>
-                        {" / "}
-                        {price.recurring && Boolean(price.unitAmount) && (
-                          <span className="capitalize">
-                            Every {price.recurring.interval}
-                          </span>
-                        )}
-                        {!price.recurring && <span>One-Time</span>}
-                        {!Boolean(price.unitAmount) && <span>Always</span>}
-                      </p>
-                      <div className="card-actions justify-end">
-                        <button
-                          className={clsx("btn", {
-                            "btn-primary": price.recurring,
-                            "btn-accent": !price.recurring,
-                          })}
-                          onClick={() => handleSubscribe(product, price)}
-                        >
-                          {getButtonName(
-                            price,
-                            activeSubscriptions.find(
-                              (sub) => sub.plan.id === price.id
-                            )
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </li>
-          );
-        })}
+        {plans?.map((product) => (
+          <ProductPLans
+            key={product.id}
+            product={product}
+            recurringSettings={recurringSettings}
+            subscriptions={subscriptions ?? []}
+            handleToggleRecurring={handleToggleRecurring}
+            setAreYouSureDialogData={setAreYouSureDialogData}
+            setPlans={setPlans}
+            setSubscriptions={setSubscriptions}
+            resumeSubscription={handleResumeSubscription}
+            subscribe={handleSubscribe}
+          />
+        ))}
         {!plans && <li>Loading...</li>}
       </ul>
       <CheckoutModal
@@ -173,6 +144,24 @@ export default function Plans() {
           getSubscriptions().then((result) => setSubscriptions(result.data));
         }}
         data={checkoutModalData}
+      />
+      <AreYouSureDialog
+        open={!!areYouSureDialogData}
+        loading={false}
+        description="Are you sure you want to cancel your plan?"
+        callToActionLabel="Cancel Plan"
+        onClose={() => setAreYouSureDialogData(undefined)}
+        onCallToAction={() => {
+          if (areYouSureDialogData) {
+            cancelSubscription(areYouSureDialogData.id).then(() => {
+              setAreYouSureDialogData(undefined);
+              getPlans().then((result) => setPlans(result.data));
+              getSubscriptions().then((result) =>
+                setSubscriptions(result.data)
+              );
+            });
+          }
+        }}
       />
     </>
   );

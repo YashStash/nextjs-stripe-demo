@@ -83,6 +83,8 @@ interface CheckoutModalProps {
         intervalCount: number;
       };
     };
+    currentSubscriptionId?: string;
+    upgrade?: boolean;
   };
 }
 

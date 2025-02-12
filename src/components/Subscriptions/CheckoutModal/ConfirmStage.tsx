@@ -43,6 +43,17 @@ interface ConfirmStageProps {
   };
   paymentDetails?: PaymentDetails;
   billingAddress?: BillingAddress;
+  proration?: {
+    credit: number;
+    payment: number;
+    total: number;
+    lines: {
+      description: string;
+      amount: number;
+      quantity: number;
+      price: number;
+    }[];
+  };
   loading: boolean;
   onPaymentDetailsUpdate: (cardId: string) => void;
   onStartSubscription: VoidFunction;
@@ -67,6 +78,7 @@ export default function ConfirmStage({
   data,
   billingAddress,
   paymentDetails,
+  proration,
   loading,
   onPaymentDetailsUpdate,
   onStartSubscription,
@@ -222,6 +234,45 @@ export default function ConfirmStage({
           )}
           {!paymentDetails && <div>Loading...</div>}
         </li>
+        {proration && (
+          <li>
+            <h2 className="mb-1 font-medium">Proration</h2>
+            <div className="card bg-base-100 shadow-xl">
+              <div className="card-body">
+                <div className="flex flex-row gap-2">
+                  <div className="flex-1">
+                    <div>
+                      <span className="font-bold">Credit:</span>{" "}
+                      {proration.credit / 100}
+                    </div>
+                    <div>
+                      <span className="font-bold">Payment:</span>{" "}
+                      {proration.payment / 100}
+                    </div>
+                    <div>
+                      <span className="font-bold">Total:</span>{" "}
+                      {proration.total / 100}
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold">Details</h3>
+                    <ul>
+                      {proration.lines.map((line, index) => (
+                        <li key={index}>
+                          <div>{line.description}</div>
+                          <div>
+                            {line.amount / 100} x {line.quantity} ={" "}
+                            {line.price / 100}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </li>
+        )}
       </ul>
       <div className="modal-action">
         <button className="btn btn-ghost" disabled={loading} onClick={onClose}>
